@@ -28,7 +28,7 @@ jobs:
 
       - name: Create private_repo_data.json
         env:
-          GH_TOKEN: ${{ secrets.GH_PAT_FOR_PAGES }}
+          GH_TOKEN: ${{ secrets.GH_PAT_FOR_PAGES }} <-- THIS IS THE REFERENCE
         run: |
           # Your Node.js script
           cat << 'EOF' > generate_private_data.js
