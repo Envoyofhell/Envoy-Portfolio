@@ -1,0 +1,96 @@
+name: Build and Deploy Portfolio Data
+
+on:
+  push:
+    branches:
+      - main # Or your default branch
+  workflow_dispatch: # Allows manual triggering
+
+permissions:
+  contents: write # Needed to commit private_repo_data.json and push to gh-pages
+  pages: write    # Needed to deploy to GitHub Pages
+  id-token: write # Needed for OIDC token if using that for deployment (more advanced)
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20' # Or your preferred LTS version
+
+      - name: Create private_repo_data.json
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT_FOR_PAGES }}
+          # Optional: If your script needs your username explicitly
+          # GITHUB_USER: ${{ github.repository_owner }}
+        run: |
+          # This script will use the GH_TOKEN to fetch private repo names and websites
+          # and write them to private_repo_data.json
+          # Create a script file (e.g., generate_private_data.js) or write inline
+          cat << 'EOF' > generate_private_data.js
+          const https = require('https');
+          const fs = require('fs');
+
+          const token = process.env.GH_TOKEN;
+          // const username = process.env.GITHUB_USER; // Use if your API call needs it explicitly
+
+          if (!token) {
+              console.error('GitHub token not found. Skipping private repo data generation.');
+              fs.writeFileSync('private_repo_data.json', JSON.stringify([]));
+              process.exit(0); // Exit gracefully
+          }
+
+          const options = {
+              hostname: 'api.github.com',
+              path: '/user/repos?type=private&sort=updated&per_page=50', // Fetch user's private repos
+              method: 'GET',
+              headers: {
+                  'Authorization': `token ${token}`,
+                  'User-Agent': 'GitHub-Action-Portfolio-Builder',
+                  'Accept': 'application/vnd.github.v3+json'
+              }
+          };
+
+          https.get(options, (res) => {
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
+              res.on('end', () => {
+                  if (res.statusCode >= 200 && res.statusCode < 300) {
+                      try {
+                          const repos = JSON.parse(data);
+                          const privateRepoInfo = repos.map(repo => ({
+                              name: repo.name,
+                              html_url: repo.html_url,
+                              homepage: repo.homepage || null // Ensure homepage is present
+                          }));
+                          fs.writeFileSync('private_repo_data.json', JSON.stringify(privateRepoInfo, null, 2));
+                          console.log('Successfully generated private_repo_data.json');
+                      } catch (e) {
+                          console.error('Error parsing JSON or writing file:', e);
+                          fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+                      }
+                  } else {
+                      console.error(`GitHub API responded with ${res.statusCode}: ${data}`);
+                      fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+                  }
+              });
+          }).on('error', (err) => {
+              console.error('Error fetching private repos:', err.message);
+              fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+          });
+          EOF
+          node generate_private_data.js
+
+      - name: Upload artifact for GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: '.' # Upload current directory (including index.html and the new JSON file)
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
