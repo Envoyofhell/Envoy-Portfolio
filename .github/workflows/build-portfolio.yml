@@ -4,50 +4,48 @@ on:
   push:
     branches:
       - main # Or your default branch
-  workflow_dispatch: # Allows manual triggering
+  workflow_dispatch:
 
 permissions:
-  contents: write # Needed to commit private_repo_data.json and push to gh-pages
-  pages: write    # Needed to deploy to GitHub Pages
-  id-token: write # Needed for OIDC token if using that for deployment (more advanced)
+  contents: read
+  pages: write
+  id-token: write
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v4 # Updated
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v4 # Updated
         with:
-          node-version: '20' # Or your preferred LTS version
+          node-version: '20'
 
       - name: Create private_repo_data.json
         env:
           GH_TOKEN: ${{ secrets.GH_PAT_FOR_PAGES }}
-          # Optional: If your script needs your username explicitly
-          # GITHUB_USER: ${{ github.repository_owner }}
         run: |
-          # This script will use the GH_TOKEN to fetch private repo names and websites
-          # and write them to private_repo_data.json
-          # Create a script file (e.g., generate_private_data.js) or write inline
+          # Your Node.js script
           cat << 'EOF' > generate_private_data.js
           const https = require('https');
           const fs = require('fs');
-
           const token = process.env.GH_TOKEN;
-          // const username = process.env.GITHUB_USER; // Use if your API call needs it explicitly
-
           if (!token) {
-              console.error('GitHub token not found. Skipping private repo data generation.');
+              console.warn('GH_TOKEN not found. Creating empty private_repo_data.json.');
               fs.writeFileSync('private_repo_data.json', JSON.stringify([]));
-              process.exit(0); // Exit gracefully
+              process.exit(0);
           }
-
           const options = {
               hostname: 'api.github.com',
-              path: '/user/repos?type=private&sort=updated&per_page=50', // Fetch user's private repos
+              // IMPORTANT: Make sure this path correctly fetches data for Envoyofhell
+              // e.g., for your own private repos: /user/repos?type=private&sort=updated&per_page=50
+              // e.g., for a specific org: /orgs/YOUR_ORG_NAME/repos?type=private...
+              path: '/user/repos?type=private&visibility=private&sort=updated&per_page=50', // Example for user's private repos
               method: 'GET',
               headers: {
                   'Authorization': `token ${token}`,
@@ -55,7 +53,6 @@ jobs:
                   'Accept': 'application/vnd.github.v3+json'
               }
           };
-
           https.get(options, (res) => {
               let data = '';
               res.on('data', (chunk) => { data += chunk; });
@@ -66,31 +63,35 @@ jobs:
                           const privateRepoInfo = repos.map(repo => ({
                               name: repo.name,
                               html_url: repo.html_url,
-                              homepage: repo.homepage || null // Ensure homepage is present
+                              homepage: repo.homepage || null
                           }));
                           fs.writeFileSync('private_repo_data.json', JSON.stringify(privateRepoInfo, null, 2));
-                          console.log('Successfully generated private_repo_data.json');
+                          console.log('Successfully generated private_repo_data.json with ' + privateRepoInfo.length + ' repos.');
                       } catch (e) {
                           console.error('Error parsing JSON or writing file:', e);
-                          fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+                          fs.writeFileSync('private_repo_data.json', JSON.stringify([]));
                       }
                   } else {
-                      console.error(`GitHub API responded with ${res.statusCode}: ${data}`);
-                      fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+                      console.error(`GitHub API for private repos responded with ${res.statusCode}: ${data}`);
+                      fs.writeFileSync('private_repo_data.json', JSON.stringify([]));
                   }
               });
           }).on('error', (err) => {
               console.error('Error fetching private repos:', err.message);
-              fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+              fs.writeFileSync('private_repo_data.json', JSON.stringify([]));
           });
           EOF
           node generate_private_data.js
+          echo "--- Content of private_repo_data.json (if exists) ---"
+          cat private_repo_data.json || echo "private_repo_data.json not found or empty"
+          echo "--- End of content ---"
+
 
       - name: Upload artifact for GitHub Pages
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v3 # Updated
         with:
-          path: '.' # Upload current directory (including index.html and the new JSON file)
+          path: '.'
 
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v4 # Updated
