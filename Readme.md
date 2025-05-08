@@ -14,7 +14,7 @@ This project is a dynamic portfolio website designed to automatically showcase m
     * Generate the `private_repo_data.json` file.
     * Deploy the latest version of the portfolio to GitHub Pages automatically on pushes to the main branch.
 * **Client-Side Rendering:** Fetches repository data and renders the project cards directly in the browser using vanilla JavaScript.
-* **Configurable:** Easily customize which repositories are displayed or excluded via the `index.html` configuration.
+* **Configurable:** Easily customize which repositories are displayed or excluded via the `index.html` configuration. 
 
 ## How It Works
  
