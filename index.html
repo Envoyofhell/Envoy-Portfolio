@@ -263,7 +263,7 @@
                 const response = await fetch(url, options);
                 if (!response.ok) {
                      // Special handling for 404 of the local data file
-                    if (response.status === 404 && url.endsWith('private_data.txt')) {
+                    if (response.status === 404 && url.endsWith('private_data.txt')) { // <-- CHECK FOR RENAMED FILE
                          throw new Error(`File not found at ${url}. Ensure the GitHub Action ran successfully and deployed the file.`);
                     }
                     // Handle API errors
@@ -272,21 +272,21 @@
                 }
                 // Check content type for JSON before parsing
                 const contentType = response.headers.get("content-type");
-                if (contentType && contentType.indexOf("application/json") !== -1) {
-                    return await response.json();
-                } else {
-                    // If it's not JSON (e.g., could be plain text for .txt file), handle appropriately
-                    // For this case, we expect the .txt file to contain JSON, so attempt to parse
+                // Allow JSON or plain text for our renamed file
+                if ((contentType && contentType.indexOf("application/json") !== -1) || url.endsWith('private_data.txt')) {
                     const textData = await response.text();
                     try {
-                        return JSON.parse(textData);
+                        return JSON.parse(textData); // Attempt to parse text as JSON
                     } catch (parseError) {
                          throw new Error(`Failed to parse content from ${url} as JSON: ${parseError.message}`);
                     }
+                } else {
+                     throw new Error(`Unexpected content type (${contentType}) received from ${url}`);
                 }
             } catch (error) {
                 console.error(`Error fetching ${url}:`, error);
                 const fileNotFoundMsg = "File not found";
+                // Check if the error is for the renamed file
                 if (error.message.includes(fileNotFoundMsg) && infoElement && url.endsWith('private_data.txt')) {
                     infoElement.textContent = error.message;
                     infoElement.style.display = 'block';
@@ -471,6 +471,7 @@
 
             // Attempt to fetch the pre-generated file (RENAMED)
             // This is NOT an API call, it's fetching a local file relative to index.html
+            // *** THIS IS THE CORRECTED LINE ***
             const privateData = await fetchJsonData('private_data.txt', privateLoader, privateErrorDiv, privateInfoDiv, false);
 
             if (privateData) { // privateData will be null if fetch fails (e.g. 404)
@@ -489,11 +490,16 @@
                         privateErrorDiv.style.display = 'block';
                     }
                 } else if (privateInfoDiv) { // Empty array in JSON
-                    privateInfoDiv.textContent = 'No private repository data found in private_data.txt.';
+                    // Check if the file was actually empty or just failed to parse
+                    if(privateData instanceof Array && privateData.length === 0) {
+                        privateInfoDiv.textContent = 'No private repository data found in private_data.txt (file was empty).';
+                    } else {
+                         privateInfoDiv.textContent = 'Could not process data from private_data.txt.'; // Fallback message
+                    }
                     privateInfoDiv.style.display = 'block';
                 }
             }
-            // If privateData is null, error/info messages are handled by fetchJsonData
+            // If privateData is null (fetch failed), error/info messages are handled by fetchJsonData
         }
 
 
