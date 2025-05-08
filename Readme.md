@@ -17,7 +17,7 @@ This project is a dynamic portfolio website designed to automatically showcase m
 * **Configurable:** Easily customize which repositories are displayed or excluded via the `index.html` configuration.
 
 ## How It Works
-
+ 
 1.  **`index.html` (Frontend):**
     * This is the main page that structures the portfolio.
     * It contains client-side JavaScript to fetch and display repository information.
