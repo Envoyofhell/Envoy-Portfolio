@@ -78,11 +78,8 @@ jobs:
           const options = {
               hostname: 'api.github.com',
               // API path to fetch the user's private repositories.
-              // - type=private: Only private repositories.
-              // - visibility=private: Explicitly state private visibility (good for clarity).
-              // - sort=updated: Get recently updated ones first.
-              // - per_page=50: Fetch up to 50 repositories (adjust if you have more).
-              path: '/user/repos?type=private&visibility=private&sort=updated&per_page=50',
+              // CORRECTED: Removed 'type=private' as it conflicts with 'visibility=private'.
+              path: '/user/repos?visibility=private&sort=updated&per_page=50',
               method: 'GET',
               headers: {
                   // Authorization header with the PAT
@@ -124,7 +121,7 @@ jobs:
                           fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
                       }
                   } else {
-                      // The API request failed (e.g., 401 Bad credentials, 403 Forbidden, 404 Not Found)
+                      // The API request failed (e.g., 401 Bad credentials, 403 Forbidden, 404 Not Found, 422 Unprocessable)
                       console.error(`GitHub API for private repos responded with ${res.statusCode}: ${data}`);
                       fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
                   }
