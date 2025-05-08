@@ -11,7 +11,6 @@ on:
   workflow_dispatch:
 
 # Sets default permissions granted to the GITHUB_TOKEN for the entire workflow.
-# You can override these for individual jobs if needed.
 permissions:
   contents: read    # Allows checkout of the repository code.
   pages: write      # Allows a deployment to GitHub Pages.
@@ -25,7 +24,6 @@ jobs:
     runs-on: ubuntu-latest
 
     # Specifies the deployment environment. This is crucial for actions/deploy-pages.
-    # It also allows you to set environment-specific secrets or protection rules if needed.
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }} # Sets the environment URL to the deployed page URL
@@ -33,127 +31,91 @@ jobs:
     # A job contains a sequence of tasks called steps
     steps:
       # Step 1: Check out your repository code
-      # This action checks-out your repository under $GITHUB_WORKSPACE, so your workflow can access it.
       - name: Checkout repository
-        uses: actions/checkout@v4 # Uses version 4 of the checkout action
+        uses: actions/checkout@v4
 
       # Step 2: Set up Node.js environment
-      # This action sets up a Node.js environment for use in your workflow.
       - name: Setup Node.js
-        uses: actions/setup-node@v4 # Uses version 4 of the setup-node action
+        uses: actions/setup-node@v4
         with:
-          node-version: '20' # Specifies Node.js version 20.x
+          node-version: '20'
 
-      # Step 3: Create the private_repo_data.json file
-      # This step runs an embedded Node.js script to fetch data about your private repositories
-      # using a Personal Access Token (PAT) and writes it to private_repo_data.json.
-      - name: Create private_repo_data.json
+      # Step 3: Create the private_data.txt file (RENAMED)
+      - name: Create private_data.txt
         env:
-          # The GH_TOKEN environment variable is made available to the Node.js script.
-          # Its value comes from the repository secret named GH_PAT_FOR_PAGES.
-          # CRITICAL: Ensure GH_PAT_FOR_PAGES secret contains a valid PAT with 'repo' scope.
+          # Provide the PAT securely via repository secrets
           GH_TOKEN: ${{ secrets.GH_PAT_FOR_PAGES }}
         run: |
-          # This is a 'here document' that creates a temporary script file (generate_private_data.js)
-          # and then executes it with Node.js.
+          # Create the Node.js script inline
           cat << 'EOF' > generate_private_data.js
-          // Node.js script to fetch private repository data
-
-          const https = require('https'); // For making HTTPS requests
-          const fs = require('fs');       // For file system operations (writing the JSON file)
-
-          // Retrieve the GitHub Personal Access Token from the environment variable
+          const https = require('https');
+          const fs = require('fs');
           const token = process.env.GH_TOKEN;
+          const outputFilename = 'private_data.txt'; // Define filename
 
-          // If the token is not found, log a warning and create an empty JSON file.
-          // This prevents the workflow from failing if the secret is missing,
-          // but private repos won't be listed.
-          if (!token || token.trim() === "") { // Also check if token is just whitespace
-              console.warn('GH_TOKEN environment variable not found or is empty. Creating empty private_repo_data.json.');
-              fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write an empty array
-              process.exit(0); // Exit the script successfully
+          if (!token || token.trim() === "") {
+              console.warn(`GH_TOKEN environment variable not found or is empty. Creating empty ${outputFilename}.`);
+              fs.writeFileSync(outputFilename, JSON.stringify([]));
+              process.exit(0);
           }
 
-          // Configuration for the GitHub API request
           const options = {
               hostname: 'api.github.com',
-              // API path to fetch the user's private repositories.
-              // CORRECTED: Removed 'type=private' as it conflicts with 'visibility=private'.
-              path: '/user/repos?visibility=private&sort=updated&per_page=50',
+              path: '/user/repos?visibility=private&sort=updated&per_page=50', // Corrected path
               method: 'GET',
               headers: {
-                  // Authorization header with the PAT
                   'Authorization': `token ${token}`,
-                  // User-Agent header is good practice for API requests
                   'User-Agent': 'GitHub-Action-Portfolio-Builder-Workflow',
-                  // Specify the GitHub API version
                   'Accept': 'application/vnd.github.v3+json'
               }
           };
 
-          // Make the HTTPS request to the GitHub API
           https.get(options, (res) => {
-              let data = ''; // To accumulate the response data
-
-              // A chunk of data has been received.
-              res.on('data', (chunk) => {
-                  data += chunk;
-              });
-
-              // The whole response has been received.
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
               res.on('end', () => {
-                  // Check if the API request was successful (HTTP status code 200-299)
                   if (res.statusCode >= 200 && res.statusCode < 300) {
                       try {
-                          const repos = JSON.parse(data); // Parse the JSON response
-                          // Map the received repository data to a simpler format,
-                          // extracting only the name, html_url, and homepage.
+                          const repos = JSON.parse(data);
                           const privateRepoInfo = repos.map(repo => ({
                               name: repo.name,
                               html_url: repo.html_url,
-                              homepage: repo.homepage || null // Use null if homepage is not set
+                              homepage: repo.homepage || null
                           }));
-                          // Write the extracted information to private_repo_data.json
-                          fs.writeFileSync('private_repo_data.json', JSON.stringify(privateRepoInfo, null, 2));
-                          console.log(`Successfully generated private_repo_data.json with ${privateRepoInfo.length} private repos.`);
+                          // Write to the RENAMED file
+                          fs.writeFileSync(outputFilename, JSON.stringify(privateRepoInfo, null, 2));
+                          console.log(`Successfully generated ${outputFilename} with ${privateRepoInfo.length} private repos.`);
                       } catch (e) {
-                          console.error('Error parsing JSON response from GitHub API or writing file:', e);
-                          fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+                          console.error(`Error parsing JSON response or writing ${outputFilename}:`, e);
+                          fs.writeFileSync(outputFilename, JSON.stringify([]));
                       }
                   } else {
-                      // The API request failed (e.g., 401 Bad credentials, 403 Forbidden, 404 Not Found, 422 Unprocessable)
                       console.error(`GitHub API for private repos responded with ${res.statusCode}: ${data}`);
-                      fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+                      fs.writeFileSync(outputFilename, JSON.stringify([]));
                   }
               });
           }).on('error', (err) => {
-              // An error occurred during the HTTPS request itself (e.g., network issue)
               console.error('Error making HTTPS request to GitHub API:', err.message);
-              fs.writeFileSync('private_repo_data.json', JSON.stringify([])); // Write empty on error
+              fs.writeFileSync(outputFilename, JSON.stringify([]));
           });
           EOF
 
-          # Execute the Node.js script created above
+          # Execute the Node.js script
           node generate_private_data.js
 
-          # Debugging: Print the content of the generated file to the workflow log
-          echo "--- Content of private_repo_data.json (if created) ---"
-          # The 'cat' command will fail if the file doesn't exist, '||' provides a fallback message.
-          cat private_repo_data.json || echo "private_repo_data.json was not found or is empty after script execution."
+          # Debugging: Print the content of the RENAMED file
+          echo "--- Content of private_data.txt (if created) ---"
+          cat private_data.txt || echo "private_data.txt was not found or is empty after script execution."
           echo "--- End of content ---"
 
       # Step 4: Upload artifact for GitHub Pages
-      # This action uploads the build output (your website files) so it can be deployed by actions/deploy-pages.
       - name: Upload artifact for GitHub Pages
-        uses: actions/upload-pages-artifact@v3 # Uses version 3 of the upload-pages-artifact action
+        uses: actions/upload-pages-artifact@v3
         with:
-          # Path to the directory to upload. '.' means the root of your workspace.
-          # This should include index.html, private_repo_data.json, and any CSS/JS/image assets.
+          # Upload the entire current directory
           path: '.'
 
       # Step 5: Deploy to GitHub Pages
-      # This action deploys the uploaded artifact to GitHub Pages.
-      # It requires the 'pages: write' and 'id-token: write' permissions.
       - name: Deploy to GitHub Pages
-        id: deployment # Gives this step an ID so its outputs can be referenced (e.g., page_url)
-        uses: actions/deploy-pages@v4 # Uses version 4 of the deploy-pages action
+        id: deployment
+        uses: actions/deploy-pages@v4
